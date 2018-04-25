@@ -2,7 +2,7 @@
 # CSC 216 (Spring 2018)
 # Reliable Transport Protocols (Homework 3)
 #
-# Sender-receiver base classes (v1).  You should not modify this file as part
+# Sender-receiver base classes (v2).  You should not modify this file as part
 # of your homework.
 ##
 
@@ -18,13 +18,20 @@ class BaseSender(object):
         self.custom_enabled  = False
         self.custom_interval = 0
         self.custom_timer    = 0
+        self.blocked         = False
 
     def send_to_network(self, seg):
         self.output_queue.put(seg)
 
+    def disallow_app_msgs(self):
+        self.blocked = False
+
+    def allow_app_msgs(self):
+        self.blocked = True
+
     def step(self):
         self.app_timer += 1
-        if self.app_timer >= self.app_interval:
+        if self.app_timer >= self.app_interval and not self.blocked:
             self.app_count += 1
             self.receive_from_app('message {}'.format(self.app_count))
             self.app_timer = 0
@@ -42,13 +49,16 @@ class BaseSender(object):
         self.custom_interval = interval
         self.custom_timer    = 0
 
+    def end_timer(self):
+        self.custom_enabled = False
+
     def receive_from_app(self, msg):
         pass
 
     def receive_from_network(self, seg):
         pass
 
-    def on_interrupt():
+    def on_interrupt(self):
         pass
 
 class BaseReceiver(object):

@@ -34,9 +34,10 @@ from sendrecvbase import BaseSender, BaseReceiver
 import Queue
 
 class Segment:
-    def __init__(self, msg, dst):
+    def __init__(self, msg, dst, alt_bit):
         self.msg = msg
         self.dst = dst
+        self.alt_bit = alt_bit
 
 class NaiveSender(BaseSender):
     def __init__(self, app_interval):
@@ -49,7 +50,7 @@ class NaiveSender(BaseSender):
     def receive_from_network(self, seg):
         pass    # Nothing to do!
 
-    def on_interrupt():
+    def on_interrupt(self):
         pass    # Nothing to do!
 
 class NaiveReceiver(BaseReceiver):
@@ -60,12 +61,53 @@ class NaiveReceiver(BaseReceiver):
         self.send_to_app(seg.msg)
 
 class AltSender(BaseSender):
-    # TODO: fill me in!
-    pass
+    def __init__(self, app_interval):
+        super(AltSender, self).__init__(app_interval)
+        self.alt_bit = True
+        self.cur_seg = Segment('', '', True)
+
+    def receive_from_app(self, msg):
+        seg = Segment(msg, 'receiver', self.alt_bit)
+        self.send_to_network(seg)
+        self.start_timer(self.app_interval)
+        self.cur_seg = seg
+        self.disallow_app_msgs()
+
+    def receive_from_network(self, seg):
+        if seg.msg == 'ACK' and self.alt_bit == seg.alt_bit:
+            self.alt_bit = not self.alt_bit
+            self.end_timer()
+            self.allow_app_msgs()
+
+        if seg.msg == 'ACK' and self.alt_bit != seg.alt_bit:
+            self.send_to_network(Segment('ACK', 'receiver', self.alt_bit))
+            self.start_timer(self.app_interval)
+
+        if seg.msg == '<CORRUPTED>':
+            self.send_to_network(Segment('ACK', 'receiver', self.alt_bit))
+            self.start_timer(self.app_interval)
+
+    def on_interrupt(self):
+        self.start_timer(self.app_interval)
+        self.send_to_network(self.cur_seg)
+
 
 class AltReceiver(BaseReceiver):
-    # TODO: fill me in!
-    pass
+    def __init__(self):
+        super(AltReceiver, self).__init__()
+        self.alt_bit = True
+
+    def receive_from_client(self, seg):
+        if seg.msg == '<CORRUPTED>':
+            self.send_to_network(Segment('ACK', 'sender', not self.alt_bit))
+
+        if self.alt_bit == seg.alt_bit:
+            self.send_to_app(seg.msg)
+            self.send_to_network(Segment('ACK', 'sender', self.alt_bit))
+            self.alt_bit = not self.alt_bit
+        else:
+            self.send_to_network(Segment('ACK', 'sender', not self.alt_bit))
+
 
 class GBNSender(BaseSender):
     # TODO: fill me in!

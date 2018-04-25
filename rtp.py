@@ -2,7 +2,7 @@
 # CSC 216 (Spring 2018)
 # Reliable Transport Protocols (Homework 3)
 #
-# Main RTP driver (v1).  You should not need to modify this file for the
+# Main RTP driver (v2).  You should not need to modify this file for the
 # homework.
 #
 # Note: this homework is written using language features that are incompatible
@@ -42,13 +42,18 @@ def peek(q):
     return q.queue[0]
 
 class Simulation:
-    def __init__(self, sender, receiver, net_delay, corr_prob, drop_prob):
+    def __init__(self, sender, receiver, net_delay, corr_prob, drop_prob, debug):
         self.sender = sender
         self.receiver = receiver
         self.net_delay = net_delay
         self.corr_prob = corr_prob
         self.drop_prob = drop_prob
+        self.debug = debug
         self.network_queue = Queue.PriorityQueue()
+
+    def print_debug(self, msg):
+        if self.debug:
+            print(msg)
 
     def push_to_network(self, step, seg):
         if random.random() >= self.drop_prob:
@@ -56,7 +61,7 @@ class Simulation:
 
     def run(self, n):
         for step in range(1, n+1):
-            print('Step {}:'.format(step))
+            self.print_debug('Step {}:'.format(step))
             # 1. Step the sender and receiver
             self.sender.step()
             self.receiver.step()
@@ -94,6 +99,8 @@ def main():
     parser.add_argument('--drop',
             type=float, dest='drop_prob', default=DROP_PROB,
             help='likelihood of dropped packets (default: {})'.format(DROP_PROB))
+    parser.add_argument('--debug', dest='debug', action='store_true',
+            help='likelihood of dropped packets (default: {})'.format(DROP_PROB))
     parser.add_argument('steps', type=int, help='number of steps to run the simulation')
     parser.add_argument('protocol', help='protocol to use [naive|alt|gbn]')
     args   = parser.parse_args()
@@ -102,10 +109,10 @@ def main():
     elif args.protocol == 'alt':
         sender, receiver = AltSender(args.app_delay), AltReceiver()
     elif args.protocol == 'gbn':
-        sender, receiver = GBNSender(args.app_delay), GNReceiver()
+        sender, receiver = GBNSender(args.app_delay), GBNReceiver()
     else:
         raise RuntimeError('Unknown protocol specified: {}'.format(args.protocol))
-    sim = Simulation(sender, receiver, args.net_delay, args.corr_prob, args.drop_prob)
+    sim = Simulation(sender, receiver, args.net_delay, args.corr_prob, args.drop_prob, args.debug)
     sim.run(args.steps)
 
 if __name__ == '__main__':
