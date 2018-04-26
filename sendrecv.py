@@ -34,7 +34,7 @@ from sendrecvbase import BaseSender, BaseReceiver
 import Queue
 
 class Segment:
-    def __init__(self, msg, dst, alt_bit):
+    def __init__(self, msg, dst, alt_bit=None):
         self.msg = msg
         self.dst = dst
         self.alt_bit = alt_bit
@@ -44,7 +44,7 @@ class NaiveSender(BaseSender):
         super(NaiveSender, self).__init__(app_interval)
 
     def receive_from_app(self, msg):
-        seg = Segment(msg, 'receiver')
+        seg = Segment(msg, 'receiver', False)
         self.send_to_network(seg)
 
     def receive_from_network(self, seg):
@@ -68,28 +68,29 @@ class AltSender(BaseSender):
 
     def receive_from_app(self, msg):
         seg = Segment(msg, 'receiver', self.alt_bit)
+        self.disallow_app_msgs()
         self.send_to_network(seg)
         self.start_timer(self.app_interval)
         self.cur_seg = seg
-        self.disallow_app_msgs()
 
     def receive_from_network(self, seg):
         if seg.msg == 'ACK' and self.alt_bit == seg.alt_bit:
-            self.alt_bit = not self.alt_bit
             self.end_timer()
+            self.alt_bit = not self.alt_bit
             self.allow_app_msgs()
 
-        if seg.msg == 'ACK' and self.alt_bit != seg.alt_bit:
-            self.send_to_network(Segment('ACK', 'receiver', self.alt_bit))
+        elif seg.msg == 'ACK' and self.alt_bit != seg.alt_bit:
+            self.send_to_network(self.cur_seg)
             self.start_timer(self.app_interval)
 
-        if seg.msg == '<CORRUPTED>':
-            self.send_to_network(Segment('ACK', 'receiver', self.alt_bit))
+        elif seg.msg == '<CORRUPTED>':
+            #print("Can't happen...")
+            self.send_to_network(self.cur_seg)
             self.start_timer(self.app_interval)
 
     def on_interrupt(self):
-        self.start_timer(self.app_interval)
         self.send_to_network(self.cur_seg)
+        self.start_timer(self.app_interval)
 
 
 class AltReceiver(BaseReceiver):
@@ -101,10 +102,11 @@ class AltReceiver(BaseReceiver):
         if seg.msg == '<CORRUPTED>':
             self.send_to_network(Segment('ACK', 'sender', not self.alt_bit))
 
-        if self.alt_bit == seg.alt_bit:
+        elif self.alt_bit == seg.alt_bit:
             self.send_to_app(seg.msg)
             self.send_to_network(Segment('ACK', 'sender', self.alt_bit))
             self.alt_bit = not self.alt_bit
+
         else:
             self.send_to_network(Segment('ACK', 'sender', not self.alt_bit))
 
