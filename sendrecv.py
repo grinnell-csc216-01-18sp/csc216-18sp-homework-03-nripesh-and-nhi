@@ -142,6 +142,7 @@ class GBNSender(BaseSender):
             if self.sequence_base == self.next_sequence:
                 self.start_timer(self.app_interval)
             self.next_sequence += 1
+            print('{} {}'.format(self.sequence_base, self.next_sequence))
 
         # Start the timer when the first packet of the sequence is sent
 
@@ -152,14 +153,14 @@ class GBNSender(BaseSender):
     def receive_from_network(self, seg):
         if seg.msg == 'ACK' and self.sequence_base == seg.sequence_num:
             #self.allow_app_msgs()
-            print('Increment base. Base: {}'.format(self.sequence_base))
+            print('Increment base. Base: {}, seg {}'.format(self.sequence_base, seg.sequence_num))
             self.sequence_base += 1
-            seg.sequence_num += 1
+            # seg.sequence_num = self.next_sequence + 1
             if self.sequence_base == self.next_sequence:
                 self.end_timer()
             else:
                 self.start_timer(self.app_interval)
-        else:
+        elif seg.msg == 'ACK' and self.sequence_base == seg.sequence_num + 1:
             print('Base {}, seg {}'.format(self.sequence_base, seg.sequence_num))
             self.on_interrupt()
 
@@ -182,10 +183,9 @@ class GBNSender(BaseSender):
     def on_interrupt(self):
         # Go back and retransmit the lost frame and subsequent frames within a cycle
         print ('interrupt')
-        for i in range(self.sequence_base, self.next_sequence + 1):
-
+        for i in range(self.sequence_base, self.next_sequence):
             self.send_to_network(self.segments[i % WINDOW_SIZE])
-            self.start_timer(self.app_interval)
+        self.start_timer(self.app_interval)
 
 
 class GBNReceiver(BaseReceiver):
@@ -202,4 +202,5 @@ class GBNReceiver(BaseReceiver):
         # If message is corrupted or unmatched sequence number
         # Ask the Sender to resend the previous packet
         else:
+            print('request {}, seg {}'.format(self.request_num, seg.sequence_num))
             self.send_to_network(Segment('ACK', 'sender', self.request_num - 1))
