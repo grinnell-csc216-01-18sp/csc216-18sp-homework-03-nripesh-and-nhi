@@ -71,11 +71,10 @@ class AltSender(BaseSender):
     def __init__(self, app_interval):
         super(AltSender, self).__init__(app_interval)
         self.alt_bit = True
-        self.cur_seg = Segment('', '', True)
+        self.cur_seg = Segment('', "", True)
 
     def receive_from_app(self, msg):
-        #print(self.alt_bit)
-        seg = Segment(msg, 'receiver', self.alt_bit)
+        seg = Segment(msg, "receiver", self.alt_bit)
         self.disallow_app_msgs()
         self.send_to_network(seg)
         self.start_timer(self.app_interval)
@@ -83,21 +82,14 @@ class AltSender(BaseSender):
 
     def receive_from_network(self, seg):
         if seg.msg == 'ACK' and self.alt_bit == seg.alt_bit:
-            #print('1')
             self.end_timer()
             self.alt_bit = not self.alt_bit
             self.allow_app_msgs()
 
         elif seg.msg == 'ACK' and self.alt_bit != seg.alt_bit:
-            #print('2')
-            #self.send_to_network(self.cur_seg)
-            #self.start_timer(self.app_interval)
             self.on_interrupt()
 
         elif seg.msg == '<CORRUPTED>':
-            #print("Can't happen...")
-            #self.send_to_network(self.cur_seg)
-            #self.start_timer(self.app_interval)
             self.on_interrupt()
 
     def on_interrupt(self):
@@ -112,14 +104,14 @@ class AltReceiver(BaseReceiver):
 
     def receive_from_client(self, seg):
         if seg.msg == '<CORRUPTED>':
-            self.send_to_network(Segment('ACK', 'sender', not self.alt_bit))
+            self.send_to_network(Segment('ACK', "sender", not self.alt_bit))
 
         elif self.alt_bit != seg.alt_bit:
-            self.send_to_network(Segment('ACK', 'sender', not self.alt_bit))
+            self.send_to_network(Segment('ACK', "sender", not self.alt_bit))
 
         else:
             self.send_to_app(seg.msg)
-            self.send_to_network(Segment('ACK', 'sender', self.alt_bit))
+            self.send_to_network(Segment('ACK', "sender", self.alt_bit))
             self.alt_bit = not self.alt_bit
 
 
@@ -129,60 +121,40 @@ class GBNSender(BaseSender):
         self.sequence_base = 0
         self.next_sequence = 0
         # Store the packets within the same sequence
-        self.segments = [Segment('', 'receiver', True, 0)] * WINDOW_SIZE
+        self.segments = [Segment('', "receiver", True, 0)] * WINDOW_SIZE
 
     def receive_from_app(self, msg):
-        #print(self.segments)
         # Next sequence is within length of whole cycle
         if self.next_sequence < self.sequence_base + WINDOW_SIZE:
-            seg = Segment(msg, 'receiver', True, self.next_sequence)
+            seg = Segment(msg, "receiver", True, self.next_sequence)
             self.segments[self.next_sequence % WINDOW_SIZE] = seg
-            print('sent')
             self.send_to_network(seg)
+
+            # Start the timer when the first packets in the cycle is sent
             if self.sequence_base == self.next_sequence:
                 self.start_timer(self.app_interval)
             self.next_sequence += 1
-            print('{} {}'.format(self.sequence_base, self.next_sequence))
-
-        # Start the timer when the first packet of the sequence is sent
 
         # End of cycle
-        else:
+        elif self.next_sequence == self.sequence_base + WINDOW_SIZE:
             self.disallow_app_msgs()
 
     def receive_from_network(self, seg):
-        if seg.msg == 'ACK' and self.sequence_base == seg.sequence_num:
-            #self.allow_app_msgs()
-            print('Increment base. Base: {}, seg {}'.format(self.sequence_base, seg.sequence_num))
-            self.sequence_base += 1
-            # seg.sequence_num = self.next_sequence + 1
+        if seg.msg != '<CORRUPTED>':
+            self.sequence_base = seg.sequence_num + 1
+
+            # Next sequence is within the cycle
+            if self.next_sequence < WINDOW_SIZE + self.sequence_base:
+                self.allow_app_msgs()
+            # End of cycle
             if self.sequence_base == self.next_sequence:
                 self.end_timer()
+            # Start the time for every packet sent in the sequence
             else:
                 self.start_timer(self.app_interval)
-        elif seg.msg == 'ACK' and self.sequence_base == seg.sequence_num + 1:
-            print('Base {}, seg {}'.format(self.sequence_base, seg.sequence_num))
-            self.on_interrupt()
-
-        #if seg.msg == 'ACK' and self.sequence_base != seg.sequence_num:
-        ##    self.sequence_base = seg.sequence_num
-        #    self.on_interrupt()
-
-        # Next sequence is within the cycle
-        #elif self.next_sequence - self.sequence_base <= WINDOW_SIZE:
-        #    self.allow_app_msgs()
-
-        # End of cycle
-        #elif self.sequence_base == self.next_sequence:
-        #   self.end_timer()
-
-        # Start the time for every packet sent in the sequence
-        #else:
-        #    self.start_timer(self.app_interval)
 
     def on_interrupt(self):
         # Go back and retransmit the lost frame and subsequent frames within a cycle
-        print ('interrupt')
         for i in range(self.sequence_base, self.next_sequence):
             self.send_to_network(self.segments[i % WINDOW_SIZE])
         self.start_timer(self.app_interval)
@@ -196,11 +168,10 @@ class GBNReceiver(BaseReceiver):
     def receive_from_client(self, seg):
         if seg.msg != '<CORRUPTED>' and self.request_num == seg.sequence_num:
             self.send_to_app(seg.msg)
-            self.send_to_network(Segment('ACK', 'sender', self.request_num))
+            self.send_to_network(Segment('ACK', "sender", self.request_num))
             self.request_num += 1
 
         # If message is corrupted or unmatched sequence number
         # Ask the Sender to resend the previous packet
         else:
-            print('request {}, seg {}'.format(self.request_num, seg.sequence_num))
-            self.send_to_network(Segment('ACK', 'sender', self.request_num - 1))
+            self.send_to_network(Segment('ACK', "sender", self.request_num - 1))
